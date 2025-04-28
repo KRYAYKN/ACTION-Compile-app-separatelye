@@ -135,3 +135,11 @@ runs:
             Write-Error "❌ XUnit test result file not found after waiting: $xunitResultsFile"
             exit 1
         }
+
+    - name: Upload Unit Test Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-test-results
+        path: |
+          TestResults.xml
+          parsed.xml
