@@ -5,24 +5,7 @@ description: |
   then runs unit tests from the test app using BcContainerHelper.
 
 inputs:
-  CONTAINERNAME:
-    description: "The name of the Business Central container."
-    required: true
-  BC_USERNAME:
-    description: "Business Central username."
-    required: true
-  BC_PASSWORD:
-    description: "Business Central password."
-    required: true
-  MAIN_APP_PATH:
-    description: "Relative path to main app."
-    required: true
-  TEST_APP_PATH:
-    description: "Relative path to test app."
-    required: true
-  Build_StagingDirectory:
-    description: "Path to the build staging directory."
-    required: true
+  # inputs aynı
 
 runs:
   using: "composite"
@@ -30,109 +13,149 @@ runs:
     - name: Compile Main App
       shell: pwsh
       run: |
-        $RepoDir = Get-Location
-        $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
-        $mainAppPath = Join-Path $RepoDir "${{ inputs.MAIN_APP_PATH }}"
-        $rulesetPath = Join-Path $mainAppPath ".vscode/CodeCop.Ruleset.json"
+        try {
+            $RepoDir = Get-Location
+            $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
+            $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
+            $mainAppPath = Join-Path $RepoDir "${{ inputs.MAIN_APP_PATH }}"
+            $rulesetPath = Join-Path $mainAppPath ".vscode/CodeCop.Ruleset.json"
 
-        Compile-AppInBcContainer -appProjectFolder $mainAppPath `
-                                 -containerName "${{ inputs.CONTAINERNAME }}" `
-                                 -credential $credential `
-                                 -generateErrorLog `
-                                 -GenerateReportLayout "Yes" `
-                                 -ReportSuppressedDiagnostics `
-                                 -EnableCodeCop `
-                                 -EnablePerTenantExtensionCop `
-                                 -EnableUICop `
-                                 -FailOn error `
-                                 -gitHubActions `
-                                 -EnableExternalRulesets `
-                                 -rulesetFile $rulesetPath
+            Compile-AppInBcContainer -appProjectFolder $mainAppPath `
+                                     -containerName "${{ inputs.CONTAINERNAME }}" `
+                                     -credential $credential `
+                                     -generateErrorLog `
+                                     -GenerateReportLayout "Yes" `
+                                     -ReportSuppressedDiagnostics `
+                                     -EnableCodeCop `
+                                     -EnablePerTenantExtensionCop `
+                                     -EnableUICop `
+                                     -FailOn error `
+                                     -gitHubActions `
+                                     -EnableExternalRulesets `
+                                     -rulesetFile $rulesetPath
 
-        $App = Get-ChildItem -Path "$mainAppPath/output" -Filter "*.app" | Select-Object -First 1
-        New-Item -Path "${{ inputs.Build_StagingDirectory }}" -ItemType Directory -Force | Out-Null
-        Copy-Item -Path $App.FullName -Destination (Join-Path "${{ inputs.Build_StagingDirectory }}" "SGBC.app") -Force
+            $App = Get-ChildItem -Path "$mainAppPath/output" -Filter "*.app" | Select-Object -First 1
+            if (-not $App) {
+                throw "Main app .app file not found after compilation."
+            }
+            New-Item -Path "${{ inputs.Build_StagingDirectory }}" -ItemType Directory -Force | Out-Null
+            Copy-Item -Path $App.FullName -Destination (Join-Path "${{ inputs.Build_StagingDirectory }}" "SGBC.app") -Force
+            Write-Host "✅ Main App compiled successfully."
+        }
+        catch {
+            Write-Error "❌ Error during Main App Compilation: $_"
+            exit 1
+        }
 
     - name: Publish Main App
       shell: pwsh
       run: |
-        $AppPath = Join-Path "${{ inputs.Build_StagingDirectory }}" "SGBC.app"
-        $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
-        Publish-BcContainerApp -appFile $AppPath `
-                               -containerName "${{ inputs.CONTAINERNAME }}" `
-                               -credential $credential `
-                               -sync `
-                               -install `
-                               -skipVerification
+        try {
+            $AppPath = Join-Path "${{ inputs.Build_StagingDirectory }}" "SGBC.app"
+            $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
+            $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
+            Publish-BcContainerApp -appFile $AppPath `
+                                   -containerName "${{ inputs.CONTAINERNAME }}" `
+                                   -credential $credential `
+                                   -sync `
+                                   -install `
+                                   -skipVerification
+            Write-Host "✅ Main App published to container successfully."
+        }
+        catch {
+            Write-Error "❌ Error during Main App Publish: $_"
+            exit 1
+        }
 
     - name: Compile and Publish Test App
       shell: pwsh
       run: |
-        $RepoDir = Get-Location
-        $testAppPath = Join-Path $RepoDir "${{ inputs.TEST_APP_PATH }}"
-        $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
-        Compile-AppInBcContainer -appProjectFolder $testAppPath `
-                                 -containerName "${{ inputs.CONTAINERNAME }}" `
-                                 -credential $credential `
-                                 -generateErrorLog `
-                                 -EnableCodeCop `
-                                 -FailOn error `
-                                 -gitHubActions
-        $TestApp = Get-ChildItem -Path "$testAppPath/output" -Filter "*.app" | Select-Object -First 1
-        Publish-BcContainerApp -appFile $TestApp.FullName `
-                               -containerName "${{ inputs.CONTAINERNAME }}" `
-                               -credential $credential `
-                               -sync `
-                               -install `
-                               -skipVerification
+        try {
+            $RepoDir = Get-Location
+            $testAppPath = Join-Path $RepoDir "${{ inputs.TEST_APP_PATH }}"
+            $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
+            $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
+
+            Compile-AppInBcContainer -appProjectFolder $testAppPath `
+                                     -containerName "${{ inputs.CONTAINERNAME }}" `
+                                     -credential $credential `
+                                     -generateErrorLog `
+                                     -EnableCodeCop `
+                                     -FailOn error `
+                                     -gitHubActions
+
+            $TestApp = Get-ChildItem -Path "$testAppPath/output" -Filter "*.app" | Select-Object -First 1
+            if (-not $TestApp) {
+                throw "Test app .app file not found after compilation."
+            }
+
+            Publish-BcContainerApp -appFile $TestApp.FullName `
+                                   -containerName "${{ inputs.CONTAINERNAME }}" `
+                                   -credential $credential `
+                                   -sync `
+                                   -install `
+                                   -skipVerification
+            Write-Host "✅ Test App compiled and published successfully."
+        }
+        catch {
+            Write-Error "❌ Error during Test App Compilation/Publish: $_"
+            exit 1
+        }
 
     - name: Run Unit Tests
       shell: pwsh
       run: |
-        $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
-        $containerName = "${{ inputs.CONTAINERNAME }}"
-        $RepoDir = Get-Location
-        $resultpath = (Get-BcContainerSharedFolders -containerName $containerName).GetEnumerator() | Where-Object { $_.Value -like "*my*" } | select -ExpandProperty Name
-        $xunitResultsFile = Join-Path $resultpath 'TestResults.xml'
+        try {
+            $password = ConvertTo-SecureString "${{ inputs.BC_PASSWORD }}" -AsPlainText -Force
+            $credential = New-Object System.Management.Automation.PSCredential ("${{ inputs.BC_USERNAME }}", $password)
+            $containerName = "${{ inputs.CONTAINERNAME }}"
+            $RepoDir = Get-Location
+            $resultpath = (Get-BcContainerSharedFolders -containerName $containerName).GetEnumerator() | Where-Object { $_.Value -like "*my*" } | Select-Object -ExpandProperty Name
+            $xunitResultsFile = Join-Path $resultpath 'TestResults.xml'
 
-        $tests = Get-TestsFromBCContainer -containerName $containerName -credential $credential -testSuite 'DEFAULT' -testCodeunitRange '66601..72000' -ignoreGroups
-        $first = $true
-        $tests | ForEach-Object {
-          Run-TestsInBCContainer -containerName $containerName `
-                                   -credential $credential `
-                                   -XUnitResultFileName $xunitResultsFile `
-                                   -AppendToXUnitResultFile:(!$first) `
-                                   -testSuite 'DEFAULT' `
-                                   -testCodeunit $_.Id `
-                                   -GitHubActions error `
-                                   -detailed `
-                                   -tenant default
-          $first = $false
-        }
-
-        $maxAttempts = 6
-        $attempt = 0
-        while (-not (Test-Path $xunitResultsFile) -and $attempt -lt $maxAttempts) {
-            Write-Host "⌛ Waiting for test results file... (Attempt $($attempt + 1)/$maxAttempts)"
-            Start-Sleep -Seconds 30
-            $attempt++
-        }
-
-        if (Test-Path $xunitResultsFile) {
-            Copy-Item -Path $xunitResultsFile -Destination (Join-Path $RepoDir "TestResults.xml") -Force
-            [xml]$result = Get-Content (Join-Path $RepoDir "TestResults.xml")
-            $result.OuterXml | Out-File (Join-Path $RepoDir "parsed.xml") -Force
-            $failed = $result.testsuite.failures
-            if ($failed -gt 0) {
-                Write-Host "$failed test(s) failed."
-                exit 1
+            $tests = Get-TestsFromBCContainer -containerName $containerName -credential $credential -testSuite 'DEFAULT' -testCodeunitRange '66601..72000' -ignoreGroups
+            if (-not $tests) {
+                throw "No test codeunits found."
             }
-        } else {
-            Write-Error "❌ XUnit test result file not found after waiting: $xunitResultsFile"
+
+            $first = $true
+            $tests | ForEach-Object {
+              Run-TestsInBCContainer -containerName $containerName `
+                                       -credential $credential `
+                                       -XUnitResultFileName $xunitResultsFile `
+                                       -AppendToXUnitResultFile:(!$first) `
+                                       -testSuite 'DEFAULT' `
+                                       -testCodeunit $_.Id `
+                                       -GitHubActions error `
+                                       -detailed `
+                                       -tenant default
+              $first = $false
+            }
+
+            $maxAttempts = 6
+            $attempt = 0
+            while (-not (Test-Path $xunitResultsFile) -and $attempt -lt $maxAttempts) {
+                Write-Host "⌛ Waiting for test results file... (Attempt $($attempt + 1)/$maxAttempts)"
+                Start-Sleep -Seconds 30
+                $attempt++
+            }
+
+            if (Test-Path $xunitResultsFile) {
+                Copy-Item -Path $xunitResultsFile -Destination (Join-Path $RepoDir "TestResults.xml") -Force
+                [xml]$result = Get-Content (Join-Path $RepoDir "TestResults.xml")
+                $failed = $result.testsuite.failures
+                if ($failed -gt 0) {
+                    Write-Error "❌ $failed test(s) failed."
+                    exit 1
+                } else {
+                    Write-Host "✅ All unit tests passed successfully."
+                }
+            } else {
+                throw "❌ XUnit test result file not found after waiting: $xunitResultsFile"
+            }
+        }
+        catch {
+            Write-Error "❌ Error during Unit Tests Execution: $_"
             exit 1
         }
 
