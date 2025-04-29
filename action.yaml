@@ -5,7 +5,24 @@ description: |
   then runs unit tests from the test app using BcContainerHelper.
 
 inputs:
-  # inputs aynı
+  CONTAINERNAME:
+    description: "The name of the Business Central container."
+    required: true
+  BC_USERNAME:
+    description: "Business Central username."
+    required: true
+  BC_PASSWORD:
+    description: "Business Central password."
+    required: true
+  MAIN_APP_PATH:
+    description: "Relative path to main app."
+    required: true
+  TEST_APP_PATH:
+    description: "Relative path to test app."
+    required: true
+  Build_StagingDirectory:
+    description: "Path to the build staging directory."
+    required: true
 
 runs:
   using: "composite"
